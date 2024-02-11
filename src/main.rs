@@ -5,9 +5,9 @@ use ggez::{
     Context, GameResult,
 };
 use rusttype::Point;
-use std::io::{stdout, Result};
-use std::thread;
 use std::time::{Duration, Instant};
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 
 const BOARD_WIDTH: usize = 10;
 const BOARD_HEIGHT: usize = 20;
@@ -30,6 +30,21 @@ enum Tetromino {
     Z,
     J,
     L,
+}
+
+impl Distribution<Tetromino> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetromino {
+        match rng.gen_range(0..=6) {
+            0 => Tetromino::I,
+            1 => Tetromino::O,
+            2 => Tetromino::T,
+            3 => Tetromino::S,
+            4 => Tetromino::Z,
+            5 => Tetromino::J,
+            6 => Tetromino::L,
+            _ => panic!("Tetromino distribution - out of range")
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -60,8 +75,8 @@ impl Gravity {
         match self {
             Gravity::None => 0f32,
             Gravity::Normal => 1f32 / 64f32,
-            Gravity::SoftDrop => todo!(),
-            Gravity::HardDrop => todo!(),
+            Gravity::SoftDrop => 5f32,
+            Gravity::HardDrop => 20f32,
         }
     }
 }
@@ -100,6 +115,18 @@ impl Tetromino {
             Tetromino::T => 3,
             Tetromino::J => 3,
             Tetromino::L => 3,
+        }
+    }
+
+    fn height(&self) -> usize {
+        match self {
+            Tetromino::I => 1,
+            Tetromino::O => 2,
+            Tetromino::S => 2,
+            Tetromino::Z => 2,
+            Tetromino::T => 2,
+            Tetromino::J => 2,
+            Tetromino::L => 2,
         }
     }
 
@@ -166,9 +193,8 @@ struct GameState {
     left_button_state: ButtonState,
     right_button_state: ButtonState,
     current_rotation_action: RotationAction,
-    current_tetromino: Tetromino,
+    tetromino: Tetromino,
     tetromino_position: Point<usize>,
-    tetromino_finished: bool,
     vertical_gravity: f32,
     horizontal_gravity: f32,
 }
@@ -237,14 +263,32 @@ impl GameState {
             board,
             current_vertical_action: VerticalAction::None,
             current_rotation_action: RotationAction::None,
-            current_tetromino: Tetromino::I,
+            tetromino: Tetromino::I,
             tetromino_position: Point { x: 0, y: 0 },
-            tetromino_finished: false,
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
             left_button_state: ButtonState::new(),
             right_button_state: ButtonState::new()
         }
+    }
+
+    fn finish_tetromino(&mut self) {
+        let shape = self.tetromino.shape();
+        let mut x = self.tetromino_position.x;
+        let mut y = self.tetromino_position.y;
+        for row in shape {
+            x = self.tetromino_position.x;
+            for item in row {
+                if item {
+                    self.board[BOARD_WIDTH * y + x].color = self.tetromino.color();
+                }
+                x += 1;
+            }
+            y += 1;
+        }
+        self.tetromino = rand::random();
+        self.tetromino_position = Point { x: 0, y: 0 };
+        self.vertical_gravity = 0f32;
     }
 
     fn hold(&self) -> bool {
@@ -284,7 +328,10 @@ impl GameState {
         self.handle_vertical();
         self.handle_horizontal();
        // self.handle_rotation();
-        self.move_tetromino();
+        let vertical_collision = self.move_tetromino();
+        if vertical_collision {
+            self.finish_tetromino();
+        }
     }
 
     fn draw_game(&self, canvas: &mut graphics::Canvas) {
@@ -296,7 +343,7 @@ impl GameState {
                     .color(seg.color),
             );
         }
-        let tetromino_tiles = self.current_tetromino.tiles(self.tetromino_position.x, self.tetromino_position.y);
+        let tetromino_tiles = self.tetromino.tiles(self.tetromino_position.x, self.tetromino_position.y);
         for tile in tetromino_tiles{
             canvas.draw(
                 &graphics::Quad,
@@ -307,33 +354,60 @@ impl GameState {
         }
     }
 
-    fn move_tetromino(&mut self) {
-        if self.vertical_gravity >= 1f32 {
-            //move tetromino down
-            while self.vertical_gravity >= 1f32 {
-                //todo check collision
-                self.tetromino_position.y += 1;
-                self.vertical_gravity -= 1f32;
-            }
-            self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
-        }
+    fn move_tetromino(&mut self) -> bool {
+        self.move_horizontally();
+        self.move_vertically()
+    }
 
+    fn move_horizontally(&mut self) {
         if self.horizontal_gravity >= 1f32 {
             while self.horizontal_gravity >= 1f32 {
-                //todo check collision
+                if self.horizontal_collision_right() {
+                    return;
+                }
                 self.tetromino_position.x += 1;
                 self.horizontal_gravity -= 1f32;
             }
             self.horizontal_gravity = 0f32;
         } else if self.horizontal_gravity <= -1f32 {
             while self.horizontal_gravity <= -1f32 {
-                //todo check collision
+                if self.horizontal_collision_left() {
+                    return;
+                }
                 self.tetromino_position.x -= 1;
                 self.horizontal_gravity += 1f32;
             }
             self.horizontal_gravity = 0f32;
         }
     }
+
+    fn move_vertically(&mut self) -> bool {
+        if self.vertical_gravity >= 1f32 {
+            //move tetromino down
+            while self.vertical_gravity >= 1f32 {
+                if self.vertical_collision() {
+                    return true;
+                }
+                self.tetromino_position.y += 1;
+                self.vertical_gravity -= 1f32;
+            }
+            self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
+        }
+        return false;
+    }
+
+    fn horizontal_collision_left(&self) -> bool {
+        self.tetromino_position.x <= 0
+    }
+
+    fn horizontal_collision_right(&self) -> bool {
+        self.tetromino_position.x + self.tetromino.width() >= BOARD_WIDTH
+    }
+
+    fn vertical_collision(&self) -> bool {
+        self.tetromino_position.y + self.tetromino.height() >= BOARD_HEIGHT
+    }
+
 
 }
 

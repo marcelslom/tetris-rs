@@ -1,26 +1,25 @@
-use crossterm::{
-    event::{self, KeyCode, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
-use ratatui::{
-    layout::Constraint,
-    prelude::{CrosstermBackend, Frame, Terminal},
-    style::{Color, Style},
-    text::Text,
-    widgets::{Cell, Row, Table},
+use ggez::graphics::Color;
+use ggez::{
+    event, graphics,
+    input::keyboard::{KeyCode, KeyInput},
+    Context, GameResult,
 };
 use rusttype::Point;
-use std::{any::Any, io::{stdout, Result}};
-use std::time::{Duration, Instant};
+use std::io::{stdout, Result};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const BOARD_WIDTH: usize = 10;
 const BOARD_HEIGHT: usize = 20;
 const NUMBER_OF_TILES: usize = BOARD_WIDTH * BOARD_HEIGHT;
-const TILE_SIZE: u16 = 2;
-const EVENT_POLL_DURATION_MS: u64 = 1;
-const FRAME_DURATION: Duration = Duration::from_micros(16776);
+const TILE_SIZE: u16 = 20;
+
+const SCREEN_SIZE: (f32, f32) = (
+    BOARD_WIDTH as f32 * TILE_SIZE as f32,
+    BOARD_HEIGHT as f32 * TILE_SIZE as f32,
+);
+
+const DESIRED_FPS: u32 = 60;
 
 #[derive(Clone, Copy)]
 enum Tetromino {
@@ -34,16 +33,25 @@ enum Tetromino {
 }
 
 #[derive(Clone, Copy)]
-enum Action {
+enum VerticalAction {
     None,
     SoftDrop,
     HardDrop,
-    Hold,
+    Hold
+}
+
+#[derive(Clone, Copy)]
+enum HorizontalAction {
+    None,
     Left,
-    Right,
+    Right
+}
+
+#[derive(Clone, Copy)]
+enum RotationAction {
+    None,
     RotateClockwise,
-    RotateCounterClockwise,
-    CloseGame,
+    RotateCounterClockwise
 }
 
 #[derive(Clone, Copy)]
@@ -51,7 +59,7 @@ enum Gravity {
     None,
     Normal,
     SoftDrop,
-    HardDrop
+    HardDrop,
 }
 
 impl Gravity {
@@ -68,13 +76,13 @@ impl Gravity {
 impl Tetromino {
     fn color(&self) -> Color {
         match self {
-            Tetromino::I => Color::Cyan,
-            Tetromino::O => Color::Yellow,
-            Tetromino::T => Color::Magenta, //Color::Purple,
-            Tetromino::S => Color::Green,
-            Tetromino::Z => Color::Red,
-            Tetromino::J => Color::Blue,
-            Tetromino::L => Color::LightMagenta, //Color::Orange,
+            Tetromino::I => Color::CYAN,
+            Tetromino::O => Color::YELLOW,
+            Tetromino::T => Color::from_rgb(0xa0, 0x20, 0xf0), //Purple,
+            Tetromino::S => Color::GREEN,
+            Tetromino::Z => Color::RED,
+            Tetromino::J => Color::BLUE,
+            Tetromino::L => Color::from_rgb(0xff, 0xa5, 0x00), //Orange,
         }
     }
 
@@ -101,160 +109,247 @@ impl Tetromino {
             Tetromino::L => 3,
         }
     }
+
+    fn tiles(&self, start_x: usize, start_y: usize) -> Vec<BoardTile> {
+        let shape = self.shape();
+        let capacity = shape.iter().map(|x| x.iter().filter(|&&xx| xx).count()).sum::<usize>();
+        let mut tiles = Vec::<BoardTile>::with_capacity(capacity);
+        let mut x = start_x;
+        let mut y = start_y;
+        for row in shape {
+            x = start_x;
+            for item in row {
+                if item {
+                    tiles.push(BoardTile::new(x, y, self.color()))
+                }
+                x += 1;
+            }
+            y += 1;
+        }
+        tiles
+    }
 }
 
-struct AppContext {
-    should_close: bool,
+#[derive(Copy, Clone)]
+struct BoardTile {
+    x: usize,
+    y: usize, 
+    color: Color
+}
+
+impl BoardTile {
+
+    fn empty() -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            color: Color::BLACK,
+        }
+    }
+
+    fn new(x: usize, y: usize, color: Color) -> Self {
+        Self {
+            x,
+            y,
+            color
+        }
+    }
+}
+
+impl From<BoardTile> for graphics::Rect {
+    fn from(item: BoardTile) -> Self {
+        graphics::Rect::new_i32(
+            item.x as i32 * TILE_SIZE as i32,
+            item.y as i32 * TILE_SIZE as i32,
+            TILE_SIZE as i32,
+            TILE_SIZE as i32,
+        )
+    }
 }
 
 struct GameState {
-    board: [Color; NUMBER_OF_TILES],
+    board: [BoardTile; NUMBER_OF_TILES],
+    current_vertical_action: VerticalAction,
+    current_horizontal_action: HorizontalAction,
+    current_rotation_action: RotationAction,
     current_tetromino: Tetromino,
     tetromino_position: Point<usize>,
     tetromino_finished: bool,
-    cumulated_gravity: f32
+    vertical_gravity: f32,
+    horizontal_gravity: f32,
 }
 
-fn main() -> Result<()> {
-    startup()?;
-    let result = game_loop();
-    shutdown()?;
-    result
-}
+impl GameState {
 
-fn game_loop() -> Result<()> {
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
-    terminal.clear()?;
+    const HORIZONTAL_GRAVITY_FACTOR:f32 = 0.25f32;
 
-    let mut app_context = AppContext {
-        should_close: false,
-    };
-    let mut game_state = GameState {
-        board: [Color::Black; NUMBER_OF_TILES],
-        current_tetromino: Tetromino::I,
-        tetromino_position: Point { x: 0, y: 0 },
-        tetromino_finished: false,
-        cumulated_gravity: 0f32
-    };
-
-    loop {
-        let frame_start = Instant::now();
-        let input = read_input()?;
-        app_logic(&mut app_context, input);
-        if app_context.should_close {
-            break;
+    fn new() -> Self {
+        let mut board = [BoardTile::empty(); NUMBER_OF_TILES];
+        for i in 0..NUMBER_OF_TILES {
+            let y = i / BOARD_WIDTH;
+            let x = i - y * BOARD_WIDTH;
+            board[i].x = x;
+            board[i].y = y;
         }
-        game_logic(&mut game_state, input);
-        terminal.draw(|frame| draw(&mut game_state, frame))?;
-        let elapsed = frame_start.elapsed();
-        if elapsed < FRAME_DURATION {
-            let time_to_wait = FRAME_DURATION - elapsed;
-            thread::sleep(time_to_wait);
+        Self {
+            board,
+            current_vertical_action: VerticalAction::None,
+            current_horizontal_action: HorizontalAction::None,
+            current_rotation_action: RotationAction::None,
+            current_tetromino: Tetromino::I,
+            tetromino_position: Point { x: 0, y: 0 },
+            tetromino_finished: false,
+            vertical_gravity: 0f32,
+            horizontal_gravity: 0f32,
         }
     }
 
-    Ok(())
-}
+    fn rotated(&mut self) {
+        self.current_rotation_action = RotationAction::None;
+    }
 
-fn read_input() -> Result<Action> {
-    if event::poll(std::time::Duration::from_millis(EVENT_POLL_DURATION_MS))? {
-        if let event::Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                return match key.code {
-                    KeyCode::Char('q') => Ok(Action::CloseGame),
-                    KeyCode::Up => Ok(Action::RotateClockwise),
-                    KeyCode::Char('0')=> Ok(Action::RotateCounterClockwise),
-                    KeyCode::Down => Ok(Action::SoftDrop),
-                    KeyCode::Char(' ') => Ok(Action::HardDrop),
-                    KeyCode::Char('c') => Ok(Action::Hold),
-                    KeyCode::Left => Ok(Action::Left),
-                    KeyCode::Right => Ok(Action::Right),
-                    _ => Ok(Action::None),
-                };
+    fn hold(&self) -> bool {
+        matches!(self.current_vertical_action, VerticalAction::Hold)
+    }
+
+    fn update_vertical_gravity(&mut self) {
+        self.vertical_gravity = match self.current_vertical_action {
+            VerticalAction::None => self.vertical_gravity + Gravity::Normal.value(),
+            VerticalAction::SoftDrop => Gravity::SoftDrop.value(),
+            VerticalAction::HardDrop => Gravity::HardDrop.value(),
+            _ => todo!(),
+        };
+    }
+
+    fn update_horizontal_gravity(&mut self) {
+        self.horizontal_gravity = match self.current_horizontal_action {
+            HorizontalAction::None => 0f32,
+            HorizontalAction::Left => self.horizontal_gravity - GameState::HORIZONTAL_GRAVITY_FACTOR,
+            HorizontalAction::Right => self.horizontal_gravity + GameState::HORIZONTAL_GRAVITY_FACTOR,
+        }
+    }
+
+    fn update_rotation(&self) {
+       // todo!()
+    }
+
+    fn update_game(&mut self) {
+        self.update_vertical_gravity();
+        self.update_horizontal_gravity();
+        self.update_rotation();
+        self.move_tetromino();
+    }
+
+    fn draw_game(&self, canvas: &mut graphics::Canvas) {
+        for seg in self.board {
+            canvas.draw(
+                &graphics::Quad,
+                graphics::DrawParam::new()
+                    .dest_rect(seg.into())
+                    .color(seg.color),
+            );
+        }
+        let tetromino_tiles = self.current_tetromino.tiles(self.tetromino_position.x, self.tetromino_position.y);
+        for tile in tetromino_tiles{
+            canvas.draw(
+                &graphics::Quad,
+                graphics::DrawParam::new()
+                    .dest_rect(tile.into())
+                    .color(tile.color),
+            );
+        }
+    }
+
+    fn move_tetromino(&mut self) {
+        if self.vertical_gravity > 1f32 {
+            //move tetromino down
+            while self.vertical_gravity > 1f32 {
+                //todo check collision
+                self.tetromino_position.y += 1;
+                self.vertical_gravity -= 1f32;
             }
+            self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
         }
-    }
-    Ok(Action::None)
-}
 
-fn app_logic(context: &mut AppContext, input: Action) {
-    if matches!(input, Action::CloseGame) {
-        context.should_close = true;
-    }
-}
-
-fn game_logic(game: &mut GameState, input: Action) {
-    match input {
-        Action::None => game.cumulated_gravity += Gravity::Normal.value(),
-        Action::SoftDrop => game.cumulated_gravity = Gravity::SoftDrop.value(),
-        Action::HardDrop => game.cumulated_gravity = Gravity::HardDrop.value(),
-        Action::Hold => return,
-        Action::Left => {
-            game.cumulated_gravity += Gravity::Normal.value();
-            if game.tetromino_position.x > 0 {
-                game.tetromino_position.x -= 1;
+        if self.horizontal_gravity > 1f32 {
+            while self.horizontal_gravity > 1f32 {
+                //todo check collision
+                self.tetromino_position.x += 1;
+                self.horizontal_gravity -= 1f32;
             }
-        },
-        Action::Right => {
-            game.cumulated_gravity += Gravity::Normal.value();
-            if game.tetromino_position.x < BOARD_WIDTH - game.current_tetromino.width() {
-                game.tetromino_position.x += 1;
+            self.horizontal_gravity = 0f32;
+        } else if self.horizontal_gravity < -1f32 {
+            while self.horizontal_gravity < -1f32 {
+                //todo check collision
+                self.tetromino_position.x -= 1;
+                self.horizontal_gravity += 1f32;
             }
-        },
-        Action::RotateClockwise => todo!(),
-        Action::RotateCounterClockwise => todo!(),
-        Action::CloseGame => {},
-    }
-
-    if game.cumulated_gravity > 1f32 { //move tetromino down
-        while game.cumulated_gravity > 1f32 {
-            //todo check collision
-            game.tetromino_position.y += 1;
-            game.cumulated_gravity -= 1f32;
-        }
-        game.cumulated_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
-    }
-
-}
-
-//this is TUI for test purposes, probably will be reimplemented later
-fn draw(game: &mut GameState, frame: &mut Frame) {
-    let mut table_colors = game.board.clone();
-    if !game.tetromino_finished {
-        let mut y_offset = game.tetromino_position.y * BOARD_WIDTH;
-        for line in game.current_tetromino.shape() {
-            let mut x_offset = game.tetromino_position.x;
-            for value in line {
-                if value {
-                    table_colors[y_offset + x_offset] = game.current_tetromino.color();
-                }
-                x_offset += 1;
-            }
-            y_offset += BOARD_WIDTH;
+            self.horizontal_gravity = 0f32;
         }
     }
 
-    let widths = vec![Constraint::Length(TILE_SIZE); BOARD_WIDTH];
-    let rows = table_colors.chunks(BOARD_WIDTH).map(|row| {
-        Row::new(
-            row.iter()
-                .map(|cell| Cell::from(Text::from("")).style(Style::default().bg(*cell))),
-        )
-        .height(TILE_SIZE)
-    });
-    let table = Table::new(rows, widths).column_spacing(0);
-
-    frame.render_widget(table, frame.size());
 }
 
-fn startup() -> Result<()> {
-    stdout().execute(EnterAlternateScreen)?;
-    enable_raw_mode()?;
-    Ok(())
+impl event::EventHandler<ggez::GameError> for GameState {
+    fn update(&mut self, ctx: &mut Context) -> std::prelude::v1::Result<(), ggez::GameError> {
+        while ctx.time.check_update_time(DESIRED_FPS) {
+            if self.hold() {
+                continue;
+            }
+            self.update_game();
+        }
+
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> std::prelude::v1::Result<(), ggez::GameError> {
+            let mut canvas = graphics::Canvas::from_frame(ctx, graphics::Color::from([0.0, 0.0, 0.0, 1.0]));
+    
+            self.draw_game(&mut canvas);
+    
+            canvas.finish(ctx)?;
+            ggez::timer::yield_now();
+            Ok(())
+    }
+
+    fn key_down_event(&mut self, ctx: &mut Context, input: KeyInput, repeated: bool) -> std::prelude::v1::Result<(), ggez::GameError> {
+        let keycode = input.keycode.unwrap();
+        match keycode {
+            KeyCode::Escape => ctx.request_quit(),
+            KeyCode::Up => self.current_rotation_action = RotationAction::RotateClockwise,
+            KeyCode::Numpad0 => self.current_rotation_action = RotationAction::RotateCounterClockwise,
+            KeyCode::Down => self.current_vertical_action = VerticalAction::SoftDrop,
+            KeyCode::Space => self.current_vertical_action = VerticalAction::HardDrop,
+            KeyCode::C => self.current_vertical_action = VerticalAction::Hold,
+            KeyCode::Left => self.current_horizontal_action = HorizontalAction::Left,
+            KeyCode::Right => self.current_horizontal_action = HorizontalAction::Right,
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn key_up_event(&mut self, ctx: &mut Context, input: KeyInput) -> std::prelude::v1::Result<(), ggez::GameError> {
+        let keycode = input.keycode.unwrap();
+        match keycode {
+            KeyCode::Down => self.current_vertical_action = VerticalAction::None,
+            KeyCode::Space => self.current_vertical_action = VerticalAction::None,
+            KeyCode::C => self.current_vertical_action = VerticalAction::None,
+            KeyCode::Left => self.current_horizontal_action = HorizontalAction::None,
+            KeyCode::Right => self.current_horizontal_action = HorizontalAction::None,
+            _ => {}
+        }
+
+        Ok(())
+    }
 }
 
-fn shutdown() -> Result<()> {
-    stdout().execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
-    Ok(())
+fn main() -> GameResult {
+    let (ctx, events_loop) = ggez::ContextBuilder::new("tetris", "author")
+        .window_setup(ggez::conf::WindowSetup::default().title("Tetris!"))
+        .window_mode(ggez::conf::WindowMode::default().dimensions(SCREEN_SIZE.0, SCREEN_SIZE.1))
+        .build()?;
+
+    let state = GameState::new();
+    event::run(ctx, events_loop, state)
 }

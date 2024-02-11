@@ -197,14 +197,12 @@ impl ButtonState {
         }
         self.pressed_duration = Some(Instant::now());
         self.key_down_was_noticed = true;
-        dbg!("Key down invoked");
     }
 
     fn key_up(&mut self) {
         self.pressed_duration = None;
         self.handled = false;
         self.key_down_was_noticed = false;
-        dbg!("Key up invoked");
     }
 
     fn is_pressed(&self) -> bool {
@@ -266,18 +264,14 @@ impl GameState {
         if self.left_button_state.is_pressed() && !self.left_button_state.handled {
             self.horizontal_gravity = -1f32;
             self.left_button_state.handled = true;
-            dbg!("Left button pressed handled");
         } else if self.left_button_state.is_hold() {
             self.horizontal_gravity -= GameState::HORIZONTAL_GRAVITY_FACTOR;
-            dbg!("Left button hold handled");
         }
         if self.right_button_state.is_pressed() && !self.right_button_state.handled {
             self.horizontal_gravity = 1f32;
             self.right_button_state.handled = true;
-            dbg!("Right button pressed handled");
         } else if self.right_button_state.is_hold() {
             self.horizontal_gravity += GameState::HORIZONTAL_GRAVITY_FACTOR;
-            dbg!("Right button hold handled");
         }
     }
 

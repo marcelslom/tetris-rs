@@ -41,13 +41,6 @@ enum VerticalAction {
 }
 
 #[derive(Clone, Copy)]
-enum HorizontalAction {
-    None,
-    Left,
-    Right
-}
-
-#[derive(Clone, Copy)]
 enum RotationAction {
     None,
     RotateClockwise,
@@ -170,7 +163,8 @@ impl From<BoardTile> for graphics::Rect {
 struct GameState {
     board: [BoardTile; NUMBER_OF_TILES],
     current_vertical_action: VerticalAction,
-    current_horizontal_action: HorizontalAction,
+    left_button_state: ButtonState,
+    right_button_state: ButtonState,
     current_rotation_action: RotationAction,
     current_tetromino: Tetromino,
     tetromino_position: Point<usize>,
@@ -179,9 +173,59 @@ struct GameState {
     horizontal_gravity: f32,
 }
 
+struct ButtonState {
+    pressed_duration: Option<Instant>,
+    handled: bool,
+    key_down_was_noticed: bool
+}
+
+impl ButtonState {
+
+    const HOLD_DURATION_MILLIS: u64 = 2000; //todo change this value to make button hold more natural
+
+    fn new() -> Self {
+        Self {
+            pressed_duration: None,
+            handled: false,
+            key_down_was_noticed: false
+        }
+    }
+
+    fn key_down(&mut self) {
+        if self.key_down_was_noticed {
+            return;
+        }
+        self.pressed_duration = Some(Instant::now());
+        self.key_down_was_noticed = true;
+        dbg!("Key down invoked");
+    }
+
+    fn key_up(&mut self) {
+        self.pressed_duration = None;
+        self.handled = false;
+        self.key_down_was_noticed = false;
+        dbg!("Key up invoked");
+    }
+
+    fn is_pressed(&self) -> bool {
+        match self.pressed_duration {
+            Some(duration) => duration + Duration::from_millis(Self::HOLD_DURATION_MILLIS) > Instant::now(),
+            None => false
+        }
+    }
+
+    fn is_hold(&self) -> bool {
+        match self.pressed_duration {
+            Some(duration) => duration + Duration::from_millis(Self::HOLD_DURATION_MILLIS) <= Instant::now(),
+            None => false
+        }
+    }
+
+}
+
 impl GameState {
 
-    const HORIZONTAL_GRAVITY_FACTOR:f32 = 0.25f32;
+    const HORIZONTAL_GRAVITY_FACTOR: f32 = 0.25f32;
 
     fn new() -> Self {
         let mut board = [BoardTile::empty(); NUMBER_OF_TILES];
@@ -194,25 +238,22 @@ impl GameState {
         Self {
             board,
             current_vertical_action: VerticalAction::None,
-            current_horizontal_action: HorizontalAction::None,
             current_rotation_action: RotationAction::None,
             current_tetromino: Tetromino::I,
             tetromino_position: Point { x: 0, y: 0 },
             tetromino_finished: false,
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
+            left_button_state: ButtonState::new(),
+            right_button_state: ButtonState::new()
         }
-    }
-
-    fn rotated(&mut self) {
-        self.current_rotation_action = RotationAction::None;
     }
 
     fn hold(&self) -> bool {
         matches!(self.current_vertical_action, VerticalAction::Hold)
     }
 
-    fn update_vertical_gravity(&mut self) {
+    fn handle_vertical(&mut self) {
         self.vertical_gravity = match self.current_vertical_action {
             VerticalAction::None => self.vertical_gravity + Gravity::Normal.value(),
             VerticalAction::SoftDrop => Gravity::SoftDrop.value(),
@@ -221,22 +262,34 @@ impl GameState {
         };
     }
 
-    fn update_horizontal_gravity(&mut self) {
-        self.horizontal_gravity = match self.current_horizontal_action {
-            HorizontalAction::None => 0f32,
-            HorizontalAction::Left => self.horizontal_gravity - GameState::HORIZONTAL_GRAVITY_FACTOR,
-            HorizontalAction::Right => self.horizontal_gravity + GameState::HORIZONTAL_GRAVITY_FACTOR,
+    fn handle_horizontal(&mut self) {
+        if self.left_button_state.is_pressed() && !self.left_button_state.handled {
+            self.horizontal_gravity = -1f32;
+            self.left_button_state.handled = true;
+            dbg!("Left button pressed handled");
+        } else if self.left_button_state.is_hold() {
+            self.horizontal_gravity -= GameState::HORIZONTAL_GRAVITY_FACTOR;
+            dbg!("Left button hold handled");
+        }
+        if self.right_button_state.is_pressed() && !self.right_button_state.handled {
+            self.horizontal_gravity = 1f32;
+            self.right_button_state.handled = true;
+            dbg!("Right button pressed handled");
+        } else if self.right_button_state.is_hold() {
+            self.horizontal_gravity += GameState::HORIZONTAL_GRAVITY_FACTOR;
+            dbg!("Right button hold handled");
         }
     }
 
-    fn update_rotation(&self) {
-       // todo!()
+    fn handle_rotation(&self) {
+        todo!();
+        self.current_rotation_action = RotationAction::None;
     }
 
     fn update_game(&mut self) {
-        self.update_vertical_gravity();
-        self.update_horizontal_gravity();
-        self.update_rotation();
+        self.handle_vertical();
+        self.handle_horizontal();
+       // self.handle_rotation();
         self.move_tetromino();
     }
 
@@ -261,9 +314,9 @@ impl GameState {
     }
 
     fn move_tetromino(&mut self) {
-        if self.vertical_gravity > 1f32 {
+        if self.vertical_gravity >= 1f32 {
             //move tetromino down
-            while self.vertical_gravity > 1f32 {
+            while self.vertical_gravity >= 1f32 {
                 //todo check collision
                 self.tetromino_position.y += 1;
                 self.vertical_gravity -= 1f32;
@@ -271,15 +324,15 @@ impl GameState {
             self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
         }
 
-        if self.horizontal_gravity > 1f32 {
-            while self.horizontal_gravity > 1f32 {
+        if self.horizontal_gravity >= 1f32 {
+            while self.horizontal_gravity >= 1f32 {
                 //todo check collision
                 self.tetromino_position.x += 1;
                 self.horizontal_gravity -= 1f32;
             }
             self.horizontal_gravity = 0f32;
-        } else if self.horizontal_gravity < -1f32 {
-            while self.horizontal_gravity < -1f32 {
+        } else if self.horizontal_gravity <= -1f32 {
+            while self.horizontal_gravity <= -1f32 {
                 //todo check collision
                 self.tetromino_position.x -= 1;
                 self.horizontal_gravity += 1f32;
@@ -321,8 +374,8 @@ impl event::EventHandler<ggez::GameError> for GameState {
             KeyCode::Down => self.current_vertical_action = VerticalAction::SoftDrop,
             KeyCode::Space => self.current_vertical_action = VerticalAction::HardDrop,
             KeyCode::C => self.current_vertical_action = VerticalAction::Hold,
-            KeyCode::Left => self.current_horizontal_action = HorizontalAction::Left,
-            KeyCode::Right => self.current_horizontal_action = HorizontalAction::Right,
+            KeyCode::Left => self.left_button_state.key_down(),
+            KeyCode::Right => self.right_button_state.key_down(),
             _ => {}
         }
 
@@ -335,8 +388,8 @@ impl event::EventHandler<ggez::GameError> for GameState {
             KeyCode::Down => self.current_vertical_action = VerticalAction::None,
             KeyCode::Space => self.current_vertical_action = VerticalAction::None,
             KeyCode::C => self.current_vertical_action = VerticalAction::None,
-            KeyCode::Left => self.current_horizontal_action = HorizontalAction::None,
-            KeyCode::Right => self.current_horizontal_action = HorizontalAction::None,
+            KeyCode::Left => self.left_button_state.key_up(),
+            KeyCode::Right => self.right_button_state.key_up(),
             _ => {}
         }
 

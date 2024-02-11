@@ -22,7 +22,7 @@ const SCREEN_SIZE: (f32, f32) = (
 const DESIRED_FPS: u32 = 60;
 
 #[derive(Clone, Copy)]
-enum Tetromino {
+enum TetrominoKind {
     I,
     O,
     T,
@@ -32,16 +32,16 @@ enum Tetromino {
     L,
 }
 
-impl Distribution<Tetromino> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetromino {
+impl Distribution<TetrominoKind> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TetrominoKind {
         match rng.gen_range(0..=6) {
-            0 => Tetromino::I,
-            1 => Tetromino::O,
-            2 => Tetromino::T,
-            3 => Tetromino::S,
-            4 => Tetromino::Z,
-            5 => Tetromino::J,
-            6 => Tetromino::L,
+            0 => TetrominoKind::I,
+            1 => TetrominoKind::O,
+            2 => TetrominoKind::T,
+            3 => TetrominoKind::S,
+            4 => TetrominoKind::Z,
+            5 => TetrominoKind::J,
+            6 => TetrominoKind::L,
             _ => panic!("Tetromino distribution - out of range")
         }
     }
@@ -81,66 +81,90 @@ impl Gravity {
     }
 }
 
-impl Tetromino {
+impl TetrominoKind {
     fn color(&self) -> Color {
         match self {
-            Tetromino::I => Color::CYAN,
-            Tetromino::O => Color::YELLOW,
-            Tetromino::T => Color::from_rgb(0xa0, 0x20, 0xf0), //Purple,
-            Tetromino::S => Color::GREEN,
-            Tetromino::Z => Color::RED,
-            Tetromino::J => Color::BLUE,
-            Tetromino::L => Color::from_rgb(0xff, 0xa5, 0x00), //Orange,
+            TetrominoKind::I => Color::CYAN,
+            TetrominoKind::O => Color::YELLOW,
+            TetrominoKind::T => Color::from_rgb(0xa0, 0x20, 0xf0), //Purple,
+            TetrominoKind::S => Color::GREEN,
+            TetrominoKind::Z => Color::RED,
+            TetrominoKind::J => Color::BLUE,
+            TetrominoKind::L => Color::from_rgb(0xff, 0xa5, 0x00), //Orange,
         }
     }
 
     fn shape(&self) -> Vec<Vec<bool>> {
         match self {
-            Tetromino::I => vec![vec![true, true, true, true]],
-            Tetromino::O => vec![vec![true, true], vec![true, true]],
-            Tetromino::T => vec![vec![false, true, false], vec![true, true, true]],
-            Tetromino::S => vec![vec![false, true, true], vec![true, true, false]],
-            Tetromino::Z => vec![vec![true, true, false], vec![false, true, true]],
-            Tetromino::J => vec![vec![true, false, false], vec![true, true, true]],
-            Tetromino::L => vec![vec![false, false, true], vec![true, true, true]],
+            TetrominoKind::I => vec![vec![true, true, true, true]],
+            TetrominoKind::O => vec![vec![true, true], vec![true, true]],
+            TetrominoKind::T => vec![vec![false, true, false], vec![true, true, true]],
+            TetrominoKind::S => vec![vec![false, true, true], vec![true, true, false]],
+            TetrominoKind::Z => vec![vec![true, true, false], vec![false, true, true]],
+            TetrominoKind::J => vec![vec![true, false, false], vec![true, true, true]],
+            TetrominoKind::L => vec![vec![false, false, true], vec![true, true, true]],
         }
     }
 
     fn width(&self) -> usize {
         match self {
-            Tetromino::I => 4,
-            Tetromino::O => 2,
-            Tetromino::S => 3,
-            Tetromino::Z => 3,
-            Tetromino::T => 3,
-            Tetromino::J => 3,
-            Tetromino::L => 3,
+            TetrominoKind::I => 4,
+            TetrominoKind::O => 2,
+            TetrominoKind::S => 3,
+            TetrominoKind::Z => 3,
+            TetrominoKind::T => 3,
+            TetrominoKind::J => 3,
+            TetrominoKind::L => 3,
         }
     }
 
     fn height(&self) -> usize {
         match self {
-            Tetromino::I => 1,
-            Tetromino::O => 2,
-            Tetromino::S => 2,
-            Tetromino::Z => 2,
-            Tetromino::T => 2,
-            Tetromino::J => 2,
-            Tetromino::L => 2,
+            TetrominoKind::I => 1,
+            TetrominoKind::O => 2,
+            TetrominoKind::S => 2,
+            TetrominoKind::Z => 2,
+            TetrominoKind::T => 2,
+            TetrominoKind::J => 2,
+            TetrominoKind::L => 2,
+        }
+    }
+}
+
+struct Tetromino {
+    kind: TetrominoKind, 
+    position: Point<usize>,
+    shape: Vec<Vec<bool>>
+}
+
+impl Tetromino {
+    fn new(kind: TetrominoKind) -> Self {
+        Tetromino {
+            kind,
+            position: Point {x: 0, y: 0},
+            shape: kind.shape()
         }
     }
 
-    fn tiles(&self, start_x: usize, start_y: usize) -> Vec<BoardTile> {
-        let shape = self.shape();
-        let capacity = shape.iter().map(|x| x.iter().filter(|&&xx| xx).count()).sum::<usize>();
+    fn random() -> Self {
+        let random_kind: TetrominoKind = rand::random();
+        Tetromino {
+            kind: random_kind,
+            position: Point {x: 0, y: 0},
+            shape: random_kind.shape()
+        }
+    }
+
+    fn tiles(&self) -> Vec<BoardTile> {
+        let capacity = self.shape.iter().map(|x| x.iter().filter(|&&xx| xx).count()).sum::<usize>();
         let mut tiles = Vec::<BoardTile>::with_capacity(capacity);
-        let mut x = start_x;
-        let mut y = start_y;
-        for row in shape {
-            x = start_x;
+        let mut x = self.position.x;
+        let mut y = self.position.y;
+        for row in &self.shape {
+            x = self.position.x;
             for item in row {
-                if item {
-                    tiles.push(BoardTile::new(x, y, self.color()))
+                if *item {
+                    tiles.push(BoardTile::new(x, y, self.kind.color()))
                 }
                 x += 1;
             }
@@ -194,7 +218,6 @@ struct GameState {
     right_button_state: ButtonState,
     current_rotation_action: RotationAction,
     tetromino: Tetromino,
-    tetromino_position: Point<usize>,
     vertical_gravity: f32,
     horizontal_gravity: f32,
 }
@@ -263,8 +286,7 @@ impl GameState {
             board,
             current_vertical_action: VerticalAction::None,
             current_rotation_action: RotationAction::None,
-            tetromino: Tetromino::I,
-            tetromino_position: Point { x: 0, y: 0 },
+            tetromino: Tetromino::new(TetrominoKind::I),
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
             left_button_state: ButtonState::new(),
@@ -273,21 +295,20 @@ impl GameState {
     }
 
     fn finish_tetromino(&mut self) {
-        let shape = self.tetromino.shape();
-        let mut x = self.tetromino_position.x;
-        let mut y = self.tetromino_position.y;
+        let shape = &self.tetromino.shape;
+        let mut x = self.tetromino.position.x;
+        let mut y = self.tetromino.position.y;
         for row in shape {
-            x = self.tetromino_position.x;
+            x = self.tetromino.position.x;
             for item in row {
-                if item {
-                    self.board[BOARD_WIDTH * y + x].color = self.tetromino.color();
+                if *item {
+                    self.board[BOARD_WIDTH * y + x].color = self.tetromino.kind.color();
                 }
                 x += 1;
             }
             y += 1;
         }
-        self.tetromino = rand::random();
-        self.tetromino_position = Point { x: 0, y: 0 };
+        self.tetromino = Tetromino::random();
         self.vertical_gravity = 0f32;
     }
 
@@ -343,7 +364,7 @@ impl GameState {
                     .color(seg.color),
             );
         }
-        let tetromino_tiles = self.tetromino.tiles(self.tetromino_position.x, self.tetromino_position.y);
+        let tetromino_tiles = self.tetromino.tiles();
         for tile in tetromino_tiles{
             canvas.draw(
                 &graphics::Quad,
@@ -365,7 +386,7 @@ impl GameState {
                 if self.horizontal_collision_right() {
                     return;
                 }
-                self.tetromino_position.x += 1;
+                self.tetromino.position.x += 1;
                 self.horizontal_gravity -= 1f32;
             }
             self.horizontal_gravity = 0f32;
@@ -374,7 +395,7 @@ impl GameState {
                 if self.horizontal_collision_left() {
                     return;
                 }
-                self.tetromino_position.x -= 1;
+                self.tetromino.position.x -= 1;
                 self.horizontal_gravity += 1f32;
             }
             self.horizontal_gravity = 0f32;
@@ -388,7 +409,7 @@ impl GameState {
                 if self.vertical_collision() {
                     return true;
                 }
-                self.tetromino_position.y += 1;
+                self.tetromino.position.y += 1;
                 self.vertical_gravity -= 1f32;
             }
             self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
@@ -397,15 +418,15 @@ impl GameState {
     }
 
     fn horizontal_collision_left(&self) -> bool {
-        self.tetromino_position.x <= 0
+        self.tetromino.position.x <= 0
     }
 
     fn horizontal_collision_right(&self) -> bool {
-        self.tetromino_position.x + self.tetromino.width() >= BOARD_WIDTH
+        self.tetromino.position.x + self.tetromino.kind.width() >= BOARD_WIDTH
     }
 
     fn vertical_collision(&self) -> bool {
-        self.tetromino_position.y + self.tetromino.height() >= BOARD_HEIGHT
+        self.tetromino.position.y + self.tetromino.kind.height() >= BOARD_HEIGHT
     }
 
 

@@ -384,6 +384,7 @@ impl GameState {
         if self.horizontal_gravity >= 1f32 {
             while self.horizontal_gravity >= 1f32 {
                 if self.horizontal_collision_right() {
+                    self.horizontal_gravity = 0f32;
                     return;
                 }
                 self.tetromino.position.x += 1;
@@ -393,6 +394,7 @@ impl GameState {
         } else if self.horizontal_gravity <= -1f32 {
             while self.horizontal_gravity <= -1f32 {
                 if self.horizontal_collision_left() {
+                    self.horizontal_gravity = 0f32;
                     return;
                 }
                 self.tetromino.position.x -= 1;
@@ -407,6 +409,7 @@ impl GameState {
             //move tetromino down
             while self.vertical_gravity >= 1f32 {
                 if self.vertical_collision() {
+                    self.vertical_gravity = 0f32;
                     return true;
                 }
                 self.tetromino.position.y += 1;
@@ -418,15 +421,65 @@ impl GameState {
     }
 
     fn horizontal_collision_left(&self) -> bool {
-        self.tetromino.position.x <= 0
+        if self.tetromino.position.x <= 0 {
+            return true;
+        }
+
+        let mut counter = 0;
+        for row in &self.tetromino.shape {
+            let offset = row.iter().position(|x| *x);
+            if offset.is_none() {
+                continue;
+            }
+            let offset = offset.unwrap();
+            if self.board[BOARD_WIDTH * (self.tetromino.position.y + counter) + self.tetromino.position.x + offset - 1].color != Color::BLACK {
+                return true;
+            }
+            counter += 1;
+        }
+
+        return false;
     }
 
     fn horizontal_collision_right(&self) -> bool {
-        self.tetromino.position.x + self.tetromino.kind.width() >= BOARD_WIDTH
+        if self.tetromino.position.x + self.tetromino.kind.width() >= BOARD_WIDTH {
+            return true;
+        }
+
+        let mut counter = 0;
+        for row in &self.tetromino.shape {
+            let offset = row.iter().rposition(|x| *x);
+            if offset.is_none() {
+                continue;
+            }
+            let offset = offset.unwrap();
+            if self.board[BOARD_WIDTH * (self.tetromino.position.y + counter) + self.tetromino.position.x + self.tetromino.kind.width() - offset + 1].color != Color::BLACK {
+                return true;
+            }
+            counter += 1;
+        }
+
+        return false;
     }
 
     fn vertical_collision(&self) -> bool {
-        self.tetromino.position.y + self.tetromino.kind.height() >= BOARD_HEIGHT
+        if self.tetromino.position.y + self.tetromino.kind.height() >= BOARD_HEIGHT {
+            return true;
+        }
+
+        for position in 0..self.tetromino.kind.width() {
+            let offset = self.tetromino.shape.iter().rposition(|x| x[position]);
+            if offset.is_none() {
+                continue;
+            }
+            let row_number = self.tetromino.position.y + offset.unwrap() + 1;
+            let column_number = self.tetromino.position.x + position;
+            if self.board[BOARD_WIDTH * row_number + column_number].color != Color::BLACK {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 

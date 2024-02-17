@@ -75,7 +75,7 @@ impl Gravity {
         match self {
             Gravity::None => 0f32,
             Gravity::Normal => 1f32 / 64f32,
-            Gravity::SoftDrop => 5f32,
+            Gravity::SoftDrop => 1f32,
             Gravity::HardDrop => 20f32,
         }
     }
@@ -230,7 +230,7 @@ struct ButtonState {
 
 impl ButtonState {
 
-    const HOLD_DURATION_MILLIS: u64 = 2000; //todo change this value to make button hold more natural
+    const HOLD_DURATION_MILLIS: u64 = 500; //todo change this value to make button hold more natural
 
     fn new() -> Self {
         Self {
@@ -316,11 +316,11 @@ impl GameState {
     }
 
     fn remove_full_rows(board: &mut [BoardTile]) {
-        for row_number in 1..BOARD_WIDTH {
+        for row_number in 1..BOARD_HEIGHT {
             let start_index = row_number * BOARD_WIDTH;
             let end_index = start_index + BOARD_WIDTH;
-            let is_row_full = &board[start_index..end_index].iter().all(|x| x.color != Color::BLACK);
-            if *is_row_full {
+            let is_full = board[start_index..end_index].iter().all(|x| x.color != Color::BLACK);
+            if is_full {
                 for i in (0..start_index).rev() {
                     board[i + BOARD_WIDTH].color = board[i].color;
                 }

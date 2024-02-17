@@ -294,7 +294,7 @@ impl GameState {
         }
     }
 
-    fn finish_tetromino(&mut self) {
+    fn move_tetromino_to_board(&mut self) {
         let shape = &self.tetromino.shape;
         let mut x = self.tetromino.position.x;
         let mut y = self.tetromino.position.y;
@@ -308,8 +308,34 @@ impl GameState {
             }
             y += 1;
         }
+    }
+
+    fn new_tetromino(&mut self) {
         self.tetromino = Tetromino::random();
         self.vertical_gravity = 0f32;
+    }
+
+    fn remove_full_rows(board: &mut [BoardTile]) {
+        for row_number in 1..BOARD_WIDTH {
+            let start_index = row_number * BOARD_WIDTH;
+            let end_index = start_index + BOARD_WIDTH;
+            let is_row_full = &board[start_index..end_index].iter().all(|x| x.color != Color::BLACK);
+            if *is_row_full {
+                for i in (0..start_index).rev() {
+                    board[i + BOARD_WIDTH].color = board[i].color;
+                }
+                for i in 0..BOARD_WIDTH {
+                    board[i].color = Color::BLACK;
+                }
+            }
+
+        }
+    }
+
+    fn finish_round(&mut self) {
+        self.move_tetromino_to_board();
+        Self::remove_full_rows(&mut self.board);
+        self.new_tetromino();
     }
 
     fn hold(&self) -> bool {
@@ -351,7 +377,7 @@ impl GameState {
        // self.handle_rotation();
         let vertical_collision = self.move_tetromino();
         if vertical_collision {
-            self.finish_tetromino();
+            self.finish_round();
         }
     }
 
@@ -417,7 +443,7 @@ impl GameState {
             }
             self.vertical_gravity = 0f32; // reset gravity to avoid errors related to the cumulation of fractional parts.
         }
-        return false;
+        false
     }
 
     fn horizontal_collision_left(&self) -> bool {
@@ -438,7 +464,7 @@ impl GameState {
             counter += 1;
         }
 
-        return false;
+        false
     }
 
     fn horizontal_collision_right(&self) -> bool {
@@ -459,7 +485,7 @@ impl GameState {
             counter += 1;
         }
 
-        return false;
+        false
     }
 
     fn vertical_collision(&self) -> bool {
@@ -479,7 +505,7 @@ impl GameState {
             }
         }
 
-        return false;
+        false
     }
 
 

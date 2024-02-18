@@ -216,7 +216,8 @@ struct GameState {
     current_vertical_action: VerticalAction,
     left_button_state: ButtonState,
     right_button_state: ButtonState,
-    current_rotation_action: RotationAction,
+    rotate_clockwise_button_state: ButtonState,
+    rotate_counterclockwise_button_state: ButtonState,
     tetromino: Tetromino,
     vertical_gravity: f32,
     horizontal_gravity: f32,
@@ -254,14 +255,22 @@ impl ButtonState {
         self.key_down_was_noticed = false;
     }
 
-    fn is_pressed(&self) -> bool {
+    fn should_handle_once(&self) -> bool {
+        self.key_down_was_noticed && ! self.handled
+    }
+
+    fn handled_once(&mut self) {
+        self.handled = true;
+    }
+
+    fn is_short_pressed(&self) -> bool {
         match self.pressed_duration {
             Some(duration) => duration + Duration::from_millis(Self::HOLD_DURATION_MILLIS) > Instant::now(),
             None => false
         }
     }
 
-    fn is_hold(&self) -> bool {
+    fn is_long_pressed(&self) -> bool {
         match self.pressed_duration {
             Some(duration) => duration + Duration::from_millis(Self::HOLD_DURATION_MILLIS) <= Instant::now(),
             None => false
@@ -285,12 +294,13 @@ impl GameState {
         Self {
             board,
             current_vertical_action: VerticalAction::None,
-            current_rotation_action: RotationAction::None,
             tetromino: Tetromino::new(TetrominoKind::I),
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
             left_button_state: ButtonState::new(),
-            right_button_state: ButtonState::new()
+            right_button_state: ButtonState::new(),
+            rotate_clockwise_button_state: ButtonState::new(),
+            rotate_counterclockwise_button_state: ButtonState::new(),
         }
     }
 
@@ -352,29 +362,28 @@ impl GameState {
     }
 
     fn handle_horizontal(&mut self) {
-        if self.left_button_state.is_pressed() && !self.left_button_state.handled {
+        if self.left_button_state.should_handle_once() {
             self.horizontal_gravity = -1f32;
-            self.left_button_state.handled = true;
-        } else if self.left_button_state.is_hold() {
+            self.left_button_state.handled_once();
+        } else if self.left_button_state.is_long_pressed() {
             self.horizontal_gravity -= GameState::HORIZONTAL_GRAVITY_FACTOR;
         }
-        if self.right_button_state.is_pressed() && !self.right_button_state.handled {
+        if self.right_button_state.should_handle_once() {
             self.horizontal_gravity = 1f32;
-            self.right_button_state.handled = true;
-        } else if self.right_button_state.is_hold() {
+            self.right_button_state.handled_once();
+        } else if self.right_button_state.is_long_pressed() {
             self.horizontal_gravity += GameState::HORIZONTAL_GRAVITY_FACTOR;
         }
     }
 
     fn handle_rotation(&self) {
         todo!();
-        self.current_rotation_action = RotationAction::None;
     }
 
     fn update_game(&mut self) {
+        //self.handle_rotation();
         self.handle_vertical();
         self.handle_horizontal();
-       // self.handle_rotation();
         let vertical_collision = self.move_tetromino();
         if vertical_collision {
             self.finish_round();
@@ -537,8 +546,8 @@ impl event::EventHandler<ggez::GameError> for GameState {
         let keycode = input.keycode.unwrap();
         match keycode {
             KeyCode::Escape => ctx.request_quit(),
-            KeyCode::Up => self.current_rotation_action = RotationAction::RotateClockwise,
-            KeyCode::Numpad0 => self.current_rotation_action = RotationAction::RotateCounterClockwise,
+            KeyCode::Up => self.rotate_clockwise_button_state.key_down(),
+            KeyCode::Numpad0 => self.rotate_counterclockwise_button_state.key_down(),
             KeyCode::Down => self.current_vertical_action = VerticalAction::SoftDrop,
             KeyCode::Space => self.current_vertical_action = VerticalAction::HardDrop,
             KeyCode::C => self.current_vertical_action = VerticalAction::Hold,
@@ -558,6 +567,8 @@ impl event::EventHandler<ggez::GameError> for GameState {
             KeyCode::C => self.current_vertical_action = VerticalAction::None,
             KeyCode::Left => self.left_button_state.key_up(),
             KeyCode::Right => self.right_button_state.key_up(),
+            KeyCode::Up => self.rotate_clockwise_button_state.key_up(),
+            KeyCode::Numpad0 => self.rotate_counterclockwise_button_state.key_up(),
             _ => {}
         }
 

@@ -56,13 +56,6 @@ enum VerticalAction {
 }
 
 #[derive(Clone, Copy)]
-enum RotationAction {
-    None,
-    RotateClockwise,
-    RotateCounterClockwise
-}
-
-#[derive(Clone, Copy)]
 enum Gravity {
     None,
     Normal,
@@ -96,45 +89,37 @@ impl TetrominoKind {
 
     fn shape(&self) -> Vec<Vec<bool>> {
         match self {
-            TetrominoKind::I => vec![vec![true, true, true, true]],
+            TetrominoKind::I => vec![vec![false, false, false, false], vec![true, true, true, true], vec![false, false, false, false], vec![false, false, false, false]],
             TetrominoKind::O => vec![vec![true, true], vec![true, true]],
-            TetrominoKind::T => vec![vec![false, true, false], vec![true, true, true]],
-            TetrominoKind::S => vec![vec![false, true, true], vec![true, true, false]],
-            TetrominoKind::Z => vec![vec![true, true, false], vec![false, true, true]],
-            TetrominoKind::J => vec![vec![true, false, false], vec![true, true, true]],
-            TetrominoKind::L => vec![vec![false, false, true], vec![true, true, true]],
-        }
-    }
-
-    fn width(&self) -> usize {
-        match self {
-            TetrominoKind::I => 4,
-            TetrominoKind::O => 2,
-            TetrominoKind::S => 3,
-            TetrominoKind::Z => 3,
-            TetrominoKind::T => 3,
-            TetrominoKind::J => 3,
-            TetrominoKind::L => 3,
-        }
-    }
-
-    fn height(&self) -> usize {
-        match self {
-            TetrominoKind::I => 1,
-            TetrominoKind::O => 2,
-            TetrominoKind::S => 2,
-            TetrominoKind::Z => 2,
-            TetrominoKind::T => 2,
-            TetrominoKind::J => 2,
-            TetrominoKind::L => 2,
+            TetrominoKind::T => vec![vec![false, true, false], vec![true, true, true], vec![false, false, false]],
+            TetrominoKind::S => vec![vec![false, true, true], vec![true, true, false], vec![false, false, false]],
+            TetrominoKind::Z => vec![vec![true, true, false], vec![false, true, true], vec![false, false, false]],
+            TetrominoKind::J => vec![vec![true, false, false], vec![true, true, true], vec![false, false, false]],
+            TetrominoKind::L => vec![vec![false, false, true], vec![true, true, true], vec![false, false, false]],
         }
     }
 }
 
+#[derive(Copy, Clone)]
+enum Rotation {
+    _0,
+    R ,
+    _2,
+    L
+}
+
+#[derive(Copy, Clone)]
+enum RotationDirection {
+    Clockwise, CounterClockwise
+}
+
+#[derive(Clone)]
 struct Tetromino {
     kind: TetrominoKind, 
     position: Point<usize>,
-    shape: Vec<Vec<bool>>
+    shape: Vec<Vec<bool>>,
+    current_rotation: Rotation
+
 }
 
 impl Tetromino {
@@ -142,7 +127,8 @@ impl Tetromino {
         Tetromino {
             kind,
             position: Point {x: 0, y: 0},
-            shape: kind.shape()
+            shape: kind.shape(),
+            current_rotation: Rotation::_0,
         }
     }
 
@@ -151,7 +137,8 @@ impl Tetromino {
         Tetromino {
             kind: random_kind,
             position: Point {x: 0, y: 0},
-            shape: random_kind.shape()
+            shape: random_kind.shape(),
+            current_rotation: Rotation::_0,
         }
     }
 
@@ -172,6 +159,24 @@ impl Tetromino {
         }
         tiles
     }
+
+  /*   fn rotate(&self, direction: RotationDirection) {
+        match direction{
+            RotationDirection::Clockwise => {
+                let mut rotated: Vec<Vec<bool>> = Vec::with_capacity(self.height);
+                for i in 0..self.height {
+                    rotated[i] = Vec::with_capacity(self.width);
+                }
+                for (y, row) in self.shape.iter().enumerate() {
+                    for (x, element) in row.iter().enumerate() {
+                        rotated[x][y] = *element;
+                    }
+                }
+
+            },
+            RotationDirection::CounterClockwise => todo!(),
+        }
+    } */
 }
 
 #[derive(Copy, Clone)]
@@ -376,12 +381,22 @@ impl GameState {
         }
     }
 
-    fn handle_rotation(&self) {
-        todo!();
+    fn handle_rotation(&mut self) {
+        if self.rotate_clockwise_button_state.should_handle_once() {
+            let mut t = self.tetromino.clone();
+            
+
+            self.rotate_clockwise_button_state.handled_once();
+        }
+        if self.rotate_counterclockwise_button_state.should_handle_once() {
+
+
+            self.rotate_counterclockwise_button_state.handled_once();
+        }
     }
 
     fn update_game(&mut self) {
-        //self.handle_rotation();
+        self.handle_rotation();
         self.handle_vertical();
         self.handle_horizontal();
         let vertical_collision = self.move_tetromino();
@@ -418,7 +433,7 @@ impl GameState {
     fn move_horizontally(&mut self) {
         if self.horizontal_gravity >= 1f32 {
             while self.horizontal_gravity >= 1f32 {
-                if self.horizontal_collision_right() {
+                if !Self::can_move(&self.tetromino, &self.board, Point {x: 1, y: 0})  {
                     self.horizontal_gravity = 0f32;
                     return;
                 }
@@ -428,7 +443,7 @@ impl GameState {
             self.horizontal_gravity = 0f32;
         } else if self.horizontal_gravity <= -1f32 {
             while self.horizontal_gravity <= -1f32 {
-                if self.horizontal_collision_left() {
+                if !Self::can_move(&self.tetromino, &self.board, Point {x: -1, y: 0})  {
                     self.horizontal_gravity = 0f32;
                     return;
                 }
@@ -443,7 +458,7 @@ impl GameState {
         if self.vertical_gravity >= 1f32 {
             //move tetromino down
             while self.vertical_gravity >= 1f32 {
-                if self.vertical_collision() {
+                if !Self::can_move(&self.tetromino, &self.board, Point {x: 0, y: 1}) {
                     self.vertical_gravity = 0f32;
                     return true;
                 }
@@ -455,66 +470,26 @@ impl GameState {
         false
     }
 
-    fn horizontal_collision_left(&self) -> bool {
-        if self.tetromino.position.x <= 0 {
-            return true;
+    fn can_move(tetromino: &Tetromino, board: &[BoardTile], offset_vector: Point<i32> ) -> bool {
+        let mut y = tetromino.position.y as i32 + offset_vector.y;
+        
+        for row in &tetromino.shape {
+            let mut x = tetromino.position.x as i32 + offset_vector.x;
+            for tile in row {
+                if *tile {
+                    if x < 0 || x >= BOARD_WIDTH.try_into().unwrap() || y < 0 || y >= BOARD_HEIGHT.try_into().unwrap() {
+                        return false;
+                    }
+                    if board[(y as usize) * BOARD_WIDTH + (x as usize)].color != Color::BLACK {
+                        return false;
+                    }
+                }
+                x += 1;
+            }
+            y += 1;
         }
 
-        let mut counter = 0;
-        for row in &self.tetromino.shape {
-            let offset = row.iter().position(|x| *x);
-            if offset.is_none() {
-                continue;
-            }
-            let offset = offset.unwrap();
-            if self.board[BOARD_WIDTH * (self.tetromino.position.y + counter) + self.tetromino.position.x + offset - 1].color != Color::BLACK {
-                return true;
-            }
-            counter += 1;
-        }
-
-        false
-    }
-
-    fn horizontal_collision_right(&self) -> bool {
-        if self.tetromino.position.x + self.tetromino.kind.width() >= BOARD_WIDTH {
-            return true;
-        }
-
-        let mut counter = 0;
-        for row in &self.tetromino.shape {
-            let offset = row.iter().rposition(|x| *x);
-            if offset.is_none() {
-                continue;
-            }
-            let offset = offset.unwrap();
-            if self.board[BOARD_WIDTH * (self.tetromino.position.y + counter) + self.tetromino.position.x + self.tetromino.kind.width() - offset + 1].color != Color::BLACK {
-                return true;
-            }
-            counter += 1;
-        }
-
-        false
-    }
-
-    fn vertical_collision(&self) -> bool {
-        if self.tetromino.position.y + self.tetromino.kind.height() >= BOARD_HEIGHT {
-            return true;
-        }
-
-        for position in 0..self.tetromino.kind.width() {
-            let offset = self.tetromino.shape.iter().rposition(|x| x[position]);
-            if offset.is_none() {
-                continue;
-            }
-            let row_number = self.tetromino.position.y + offset.unwrap() + 1;
-            let column_number = self.tetromino.position.x + position;
-            if self.board[BOARD_WIDTH * row_number + column_number].color != Color::BLACK {
-                return true;
-            }
-        }
-
-        false
+        true
     }
 
 

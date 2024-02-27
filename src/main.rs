@@ -108,6 +108,35 @@ enum Rotation {
     L
 }
 
+impl Rotation {
+
+    fn next(&self, direction: RotationDirection) -> Self {
+        match direction {
+            RotationDirection::Clockwise => Self::next_clockwise(*self),
+            RotationDirection::CounterClockwise => Self::next_counter_clockwise(*self),
+        }
+    }
+
+    fn next_clockwise(rotation: Rotation) -> Self {
+        match rotation {
+            Rotation::_0 => Rotation::R,
+            Rotation::R => Rotation::_2,
+            Rotation::_2 => Rotation::L,
+            Rotation::L => Rotation::_0,
+        }
+    }
+
+    fn next_counter_clockwise(rotation: Rotation) -> Self {
+        match rotation {
+            Rotation::_0 => Rotation::L,
+            Rotation::R => Rotation::_0,
+            Rotation::_2 => Rotation::R,
+            Rotation::L => Rotation::_2,
+        }
+    }
+    
+}
+
 #[derive(Copy, Clone)]
 enum RotationDirection {
     Clockwise, CounterClockwise
@@ -116,7 +145,7 @@ enum RotationDirection {
 #[derive(Clone)]
 struct Tetromino {
     kind: TetrominoKind, 
-    position: Point<usize>,
+    position: Point<i32>,
     shape: Vec<Vec<bool>>,
     current_rotation: Rotation
 
@@ -151,7 +180,7 @@ impl Tetromino {
             x = self.position.x;
             for item in row {
                 if *item {
-                    tiles.push(BoardTile::new(x, y, self.kind.color()))
+                    tiles.push(BoardTile::new(x as u32, y as u32, self.kind.color()))
                 }
                 x += 1;
             }
@@ -160,29 +189,44 @@ impl Tetromino {
         tiles
     }
 
-  /*   fn rotate(&self, direction: RotationDirection) {
+     fn rotate(&mut self, direction: RotationDirection) {
         match direction{
             RotationDirection::Clockwise => {
-                let mut rotated: Vec<Vec<bool>> = Vec::with_capacity(self.height);
-                for i in 0..self.height {
-                    rotated[i] = Vec::with_capacity(self.width);
-                }
-                for (y, row) in self.shape.iter().enumerate() {
-                    for (x, element) in row.iter().enumerate() {
-                        rotated[x][y] = *element;
+                let new_width = self.shape.len();
+                let new_height = self.shape[0].len();
+                let mut rotated: Vec<Vec<bool>> = Vec::with_capacity(new_height);
+                for i in 0..new_height {
+                    let mut new_row: Vec<bool> = Vec::with_capacity(new_width);
+                    for old_row in self.shape.iter().rev() {
+                        new_row.push(old_row[i]);
                     }
+                    rotated.push(new_row);
                 }
-
+                self.shape = rotated;
+                self.current_rotation = self.current_rotation.next(RotationDirection::Clockwise);
             },
-            RotationDirection::CounterClockwise => todo!(),
+            RotationDirection::CounterClockwise => {
+                let new_width = self.shape.len();
+                let new_height = self.shape[0].len();
+                let mut rotated: Vec<Vec<bool>> = Vec::with_capacity(new_height);
+                for i in 0..new_height {
+                    let mut new_row: Vec<bool> = Vec::with_capacity(new_width);
+                    for old_row in &self.shape {
+                        new_row.push(old_row[new_height - i - 1]);
+                    }
+                    rotated.push(new_row);
+                }
+                self.shape = rotated;
+                self.current_rotation = self.current_rotation.next(RotationDirection::CounterClockwise);
+            }
         }
-    } */
+    }
 }
 
 #[derive(Copy, Clone)]
 struct BoardTile {
-    x: usize,
-    y: usize, 
+    x: u32,
+    y: u32, 
     color: Color
 }
 
@@ -196,7 +240,7 @@ impl BoardTile {
         }
     }
 
-    fn new(x: usize, y: usize, color: Color) -> Self {
+    fn new(x: u32, y: u32, color: Color) -> Self {
         Self {
             x,
             y,
@@ -293,13 +337,13 @@ impl GameState {
         for i in 0..NUMBER_OF_TILES {
             let y = i / BOARD_WIDTH;
             let x = i - y * BOARD_WIDTH;
-            board[i].x = x;
-            board[i].y = y;
+            board[i].x = x as u32;
+            board[i].y = y as u32;
         }
         Self {
             board,
             current_vertical_action: VerticalAction::None,
-            tetromino: Tetromino::new(TetrominoKind::I),
+            tetromino: Tetromino::new(TetrominoKind::T),
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
             left_button_state: ButtonState::new(),
@@ -317,7 +361,7 @@ impl GameState {
             x = self.tetromino.position.x;
             for item in row {
                 if *item {
-                    self.board[BOARD_WIDTH * y + x].color = self.tetromino.kind.color();
+                    self.board[BOARD_WIDTH * y as usize + x as usize].color = self.tetromino.kind.color();
                 }
                 x += 1;
             }
@@ -383,13 +427,20 @@ impl GameState {
 
     fn handle_rotation(&mut self) {
         if self.rotate_clockwise_button_state.should_handle_once() {
-            let mut t = self.tetromino.clone();
-            
+            let mut clone = self.tetromino.clone();
+            clone.rotate(RotationDirection::Clockwise);
+            if Self::can_move(&clone, &self.board, Point {x: 0, y: 0}) {
+                self.tetromino = clone;
+            }        
 
             self.rotate_clockwise_button_state.handled_once();
         }
         if self.rotate_counterclockwise_button_state.should_handle_once() {
-
+            let mut clone = self.tetromino.clone();
+            clone.rotate(RotationDirection::CounterClockwise);
+            if Self::can_move(&clone, &self.board, Point {x: 0, y: 0}) {
+                self.tetromino = clone;
+            }   
 
             self.rotate_counterclockwise_button_state.handled_once();
         }

@@ -522,9 +522,9 @@ impl GameState {
     }
 
     fn can_move(tetromino: &Tetromino, board: &[BoardTile], offset_vector: Point<i32> ) -> bool {
-        let mut y = tetromino.position.y as i32 + offset_vector.y;
+        let mut y = tetromino.position.y as i32 +tetromino.shape.len() as i32 + offset_vector.y - 1;
         
-        for row in &tetromino.shape {
+        for row in tetromino.shape.iter().rev() {
             let mut x = tetromino.position.x as i32 + offset_vector.x;
             for tile in row {
                 if *tile {
@@ -537,7 +537,7 @@ impl GameState {
                 }
                 x += 1;
             }
-            y += 1;
+            y -= 1;
         }
 
         true

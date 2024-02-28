@@ -5,6 +5,7 @@ use ggez::{
     Context, GameResult,
 };
 use rusttype::Point;
+use std::default;
 use std::time::{Duration, Instant};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
@@ -21,7 +22,36 @@ const SCREEN_SIZE: (f32, f32) = (
 
 const DESIRED_FPS: u32 = 60;
 
-#[derive(Clone, Copy)]
+static WALL_KICKS : [[Point<i32>; 5]; 8] = [
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: -1, y: -1}, Point {x: 0, y: 2}, Point {x: -1, y: 2} ],
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: 1, y: 1}, Point {x: 0, y: -2}, Point {x: 1, y: -2} ],
+
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: 1, y: 1}, Point {x: 0, y: -2}, Point {x: 1, y: -2} ],
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: -1, y: -1}, Point {x: 0, y: 2}, Point {x: -1, y: 2} ],
+
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: 1, y: -1}, Point {x: 0, y: 2}, Point {x: 1, y: 2} ],
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: -1, y: 1}, Point {x: 0, y: -2}, Point {x: -1, y: -2} ],
+
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: -1, y: 1}, Point {x: 0, y: -2}, Point {x: -1, y: -2} ],
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: 1, y: -1}, Point {x: 0, y: 2}, Point {x: 1, y: 2} ],
+];
+
+static I_WALL_KICKS : [[Point<i32>; 5]; 8] = [
+    [Point {x: 0, y: 0}, Point {x: -2, y: 0}, Point {x: 1, y: 0}, Point {x: -2, y: 1}, Point {x: 1, y: -2} ],
+    [Point {x: 0, y: 0}, Point {x: 2, y: 0}, Point {x: -1, y: 0}, Point {x: 2, y: -1}, Point {x: -1, y: 2} ],
+
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: 2, y: 0}, Point {x: -1, y: -2}, Point {x: 2, y: 1} ],
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: -2, y: 0}, Point {x: 1, y: 2}, Point {x: -2, y: -1} ],
+
+    [Point {x: 0, y: 0}, Point {x: 2, y: 0}, Point {x: -1, y: 0}, Point {x: 2, y: -1}, Point {x: -1, y: 2} ],
+    [Point {x: 0, y: 0}, Point {x: -2, y: 0}, Point {x: 1, y: 0}, Point {x: -2, y: 1}, Point {x: 1, y: -2} ],
+
+    [Point {x: 0, y: 0}, Point {x: 1, y: 0}, Point {x: -2, y: 0}, Point {x: 1, y: 2}, Point {x: -2, y: -1} ],
+    [Point {x: 0, y: 0}, Point {x: -1, y: 0}, Point {x: 2, y: 0}, Point {x: -1, y: -2}, Point {x: 2, y: 1} ],
+];
+
+
+#[derive(Clone, Copy, PartialEq)]
 enum TetrominoKind {
     I,
     O,
@@ -102,10 +132,10 @@ impl TetrominoKind {
 
 #[derive(Copy, Clone)]
 enum Rotation {
-    _0,
-    R ,
-    _2,
-    L
+    _0 = 0,
+    R = 1,
+    _2 = 2,
+    L = 3
 }
 
 impl Rotation {
@@ -137,7 +167,7 @@ impl Rotation {
     
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum RotationDirection {
     Clockwise, CounterClockwise
 }
@@ -426,24 +456,49 @@ impl GameState {
     }
 
     fn handle_rotation(&mut self) {
+        if self.tetromino.kind == TetrominoKind::O {
+            return;
+        }
         if self.rotate_clockwise_button_state.should_handle_once() {
-            let mut clone = self.tetromino.clone();
-            clone.rotate(RotationDirection::Clockwise);
-            if Self::can_move(&clone, &self.board, Point {x: 0, y: 0}) {
-                self.tetromino = clone;
-            }        
-
+            self.try_rotate(RotationDirection::Clockwise);
             self.rotate_clockwise_button_state.handled_once();
         }
         if self.rotate_counterclockwise_button_state.should_handle_once() {
-            let mut clone = self.tetromino.clone();
-            clone.rotate(RotationDirection::CounterClockwise);
-            if Self::can_move(&clone, &self.board, Point {x: 0, y: 0}) {
-                self.tetromino = clone;
-            }   
-
+            self.try_rotate(RotationDirection::CounterClockwise);
             self.rotate_counterclockwise_button_state.handled_once();
         }
+    }
+
+    fn try_rotate(&mut self, direction: RotationDirection) {
+        let mut clone = self.tetromino.clone();
+        let wall_kicks = Self::get_wall_kick_vectors(clone.kind, clone.current_rotation, direction);
+        clone.rotate(direction);
+        for kick in wall_kicks {
+            if Self::can_move(&clone, &self.board, kick) {
+                clone.position.x += kick.x;
+                clone.position.y += kick.y;
+                self.tetromino = clone;
+                break;
+            }   
+        }
+    }
+    
+    fn get_wall_kick_vectors(tetromino: TetrominoKind, start: Rotation, direction: RotationDirection) -> [Point<i32>; 5] {
+        let table = match tetromino {
+            TetrominoKind::O => panic!("'O' tetromino does not support rotation and does not have any wall kick vector"),
+            TetrominoKind::I => I_WALL_KICKS,
+            _ => WALL_KICKS
+        };
+
+        let mut index: usize = 0;
+        if direction == RotationDirection::Clockwise {
+            index = 2 * start as usize;
+        } else {
+            let finish  = start.next(RotationDirection::CounterClockwise);
+            index = 2 * finish as usize + 1;
+        }
+
+        table[index]
     }
 
     fn update_game(&mut self) {

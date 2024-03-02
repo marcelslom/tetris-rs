@@ -5,7 +5,6 @@ mod board_tile;
 mod tetromino;
 mod vertical_action;
 mod button_state;
-mod tetromino_kind;
 mod gravity;
 mod rotation;
 mod wall_kicks;

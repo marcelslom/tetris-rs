@@ -2,8 +2,7 @@ use crate::{board_tile::BoardTile,
     button_state::ButtonState, 
     gravity::Gravity, 
     rotation::{Rotation, RotationDirection},
-    tetromino::Tetromino, 
-    tetromino_kind::TetrominoKind, 
+    tetromino::{Tetromino, TetrominoKind}, 
     vertical_action::VerticalAction, 
     wall_kicks};
 use ggez::graphics::{self, Color};
@@ -18,6 +17,7 @@ pub struct GameState {
     pub rotate_clockwise_button_state: ButtonState,
     pub rotate_counterclockwise_button_state: ButtonState,
     tetromino: Tetromino,
+    ghost: Option<Tetromino>,
     vertical_gravity: f32,
     horizontal_gravity: f32,
 }
@@ -34,10 +34,13 @@ impl GameState {
             board[i].x = x as u32;
             board[i].y = y as u32;
         }
+        let tetromino = Tetromino::new(TetrominoKind::T);
+        let ghost = Some(tetromino.to_ghost());
         Self {
             board,
             current_vertical_action: VerticalAction::None,
-            tetromino: Tetromino::new(TetrominoKind::T),
+            tetromino,
+            ghost,
             vertical_gravity: 0f32,
             horizontal_gravity: 0f32,
             left_button_state: ButtonState::new(),
@@ -54,7 +57,7 @@ impl GameState {
             let mut x = self.tetromino.position.x;
             for item in row {
                 if *item {
-                    self.board[crate::BOARD_WIDTH * y as usize + x as usize].color = self.tetromino.kind.color();
+                    self.board[crate::BOARD_WIDTH * y as usize + x as usize].color = self.tetromino.color;
                 }
                 x += 1;
             }
@@ -64,6 +67,7 @@ impl GameState {
 
     fn new_tetromino(&mut self) {
         self.tetromino = Tetromino::random();
+        self.ghost = Some(self.tetromino.to_ghost());
         self.vertical_gravity = 0f32;
     }
 
@@ -169,8 +173,18 @@ impl GameState {
         self.handle_vertical();
         self.handle_horizontal();
         let vertical_collision = self.move_tetromino();
+        let mut ghost = self.tetromino.to_ghost();
         if vertical_collision {
             self.finish_round();
+            return;
+        }
+        while ! Self::can_move(&ghost, &self.board, Point {x: 0, y: 0}) {
+            ghost.position.y -= 1;
+        }
+        if ghost.position.y > 5 {
+            self.ghost = Some(ghost)
+        } else {
+            self.ghost = None;
         }
     }
 
@@ -182,6 +196,17 @@ impl GameState {
                     .dest_rect(seg.into())
                     .color(seg.color),
             );
+        }
+        if self.ghost.is_some() {
+            let tiles = self.ghost.as_ref().unwrap().tiles();
+            for tile in tiles{
+                canvas.draw(
+                    &graphics::Quad,
+                    graphics::DrawParam::new()
+                        .dest_rect(tile.into())
+                        .color(tile.color),
+                );
+            }
         }
         let tetromino_tiles = self.tetromino.tiles();
         for tile in tetromino_tiles{

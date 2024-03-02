@@ -102,7 +102,7 @@ impl GameState {
             self.vertical_gravity = Gravity::HardDrop.value();
             self.hard_drop_button_state.handled_once();
         } else if self.soft_drop_button_state.is_pressed() {
-            self.vertical_gravity = Gravity::SoftDrop.value();
+            self.vertical_gravity += Gravity::SoftDrop.value();
         } else {
             self.vertical_gravity += Gravity::Normal.value();
         }
@@ -192,14 +192,10 @@ impl GameState {
         }
 
         let mut ghost = self.tetromino.to_ghost();
-        while ! Self::can_move(&ghost, &self.board, Point {x: 0, y: 0}) {
-            ghost.position.y -= 1;
+        while Self::can_move(&ghost, &self.board, Point {x: 0, y: 1}) {
+            ghost.position.y += 1;
         }
-        if ghost.position.y > 5 {
-            self.ghost = Some(ghost)
-        } else {
-            self.ghost = None;
-        }
+        self.ghost = Some(ghost)
     }
 
     pub fn draw_game(&self, canvas: &mut graphics::Canvas) {

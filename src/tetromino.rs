@@ -38,8 +38,8 @@ impl Tetromino {
     pub fn to_ghost(&self) -> Self {
         let mut ghost = self.clone();
         ghost.color = Color::from_rgb(100, 100, 100);
-        let last_row_index = ghost.shape.iter().enumerate().rev().find(|x| x.1.iter().any(|xx| *xx)).map(|x| x.0).unwrap();
-        ghost.position.y = (crate::BOARD_HEIGHT - ghost.shape.len() + last_row_index) as i32;
+       // let last_row_index = ghost.shape.iter().enumerate().rev().find(|x| x.1.iter().any(|xx| *xx)).map(|x| x.0).unwrap();
+       // ghost.position.y = (crate::BOARD_HEIGHT - ghost.shape.len() + last_row_index) as i32;
         ghost
     }
 

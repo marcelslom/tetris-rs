@@ -8,7 +8,7 @@ pub struct ButtonState {
 
 impl ButtonState {
 
-    const HOLD_DURATION_MILLIS: u64 = 500; //todo change this value to make button hold more natural
+    const HOLD_DURATION_MILLIS: u64 = 250;
 
     pub fn new() -> Self {
         Self {

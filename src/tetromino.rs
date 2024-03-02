@@ -11,7 +11,6 @@ pub struct Tetromino {
     pub position: Point<i32>,
     pub shape: Vec<Vec<bool>>,
     pub current_rotation: Rotation, 
-    pub is_ghost: bool
 }
 
 impl Tetromino {
@@ -22,7 +21,6 @@ impl Tetromino {
             position: Point {x: 0, y: 0},
             shape: kind.shape(),
             current_rotation: Rotation::_0,
-            is_ghost: false
         }
     }
 
@@ -34,7 +32,6 @@ impl Tetromino {
             position: Point {x: 0, y: 0},
             shape: random_kind.shape(),
             current_rotation: Rotation::_0,
-            is_ghost: false
         }
     }
 
@@ -43,7 +40,6 @@ impl Tetromino {
         ghost.color = Color::from_rgb(100, 100, 100);
         let last_row_index = ghost.shape.iter().enumerate().rev().find(|x| x.1.iter().any(|xx| *xx)).map(|x| x.0).unwrap();
         ghost.position.y = (crate::BOARD_HEIGHT - ghost.shape.len() + last_row_index) as i32;
-        ghost.is_ghost = true;
         ghost
     }
 

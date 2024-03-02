@@ -3,7 +3,6 @@ use crate::{board_tile::BoardTile,
     gravity::Gravity, 
     rotation::{Rotation, RotationDirection},
     tetromino::{Tetromino, TetrominoKind}, 
-    vertical_action::VerticalAction, 
     wall_kicks};
 use ggez::graphics::{self, Color};
 use rusttype::Point;
@@ -11,11 +10,13 @@ use rusttype::Point;
 
 pub struct GameState {
     board: [BoardTile; crate::NUMBER_OF_TILES],
-    pub current_vertical_action: VerticalAction,
     pub left_button_state: ButtonState,
     pub right_button_state: ButtonState,
     pub rotate_clockwise_button_state: ButtonState,
     pub rotate_counterclockwise_button_state: ButtonState,
+    pub hard_drop_button_state: ButtonState,
+    pub soft_drop_button_state: ButtonState,
+    pub hold_button_state: ButtonState,
     tetromino: Tetromino,
     ghost: Option<Tetromino>,
     vertical_gravity: f32,
@@ -38,7 +39,6 @@ impl GameState {
         let ghost = Some(tetromino.to_ghost());
         Self {
             board,
-            current_vertical_action: VerticalAction::None,
             tetromino,
             ghost,
             vertical_gravity: 0f32,
@@ -47,6 +47,9 @@ impl GameState {
             right_button_state: ButtonState::new(),
             rotate_clockwise_button_state: ButtonState::new(),
             rotate_counterclockwise_button_state: ButtonState::new(),
+            hard_drop_button_state: ButtonState::new(),
+            soft_drop_button_state: ButtonState::new(),
+            hold_button_state: ButtonState::new(),
         }
     }
 
@@ -95,16 +98,18 @@ impl GameState {
     }
 
     pub fn hold(&self) -> bool {
-        matches!(self.current_vertical_action, VerticalAction::Hold)
+        self.hold_button_state.is_pressed()
     }
 
     fn handle_vertical(&mut self) {
-        self.vertical_gravity = match self.current_vertical_action {
-            VerticalAction::None => self.vertical_gravity + Gravity::Normal.value(),
-            VerticalAction::SoftDrop => Gravity::SoftDrop.value(),
-            VerticalAction::HardDrop => Gravity::HardDrop.value(),
-            _ => todo!(),
-        };
+        if self.hard_drop_button_state.should_handle_once() {
+            self.vertical_gravity = Gravity::HardDrop.value();
+            self.hard_drop_button_state.handled_once();
+        } else if self.soft_drop_button_state.is_pressed() {
+            self.vertical_gravity = Gravity::SoftDrop.value();
+        } else {
+            self.vertical_gravity += Gravity::Normal.value();
+        }
     }
 
     fn handle_horizontal(&mut self) {

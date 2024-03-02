@@ -56,4 +56,9 @@ impl ButtonState {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn is_pressed(&self) -> bool {
+        self.key_down_was_noticed
+    }
+
 }

@@ -3,13 +3,10 @@ use game_state::GameState;
 
 mod board_tile;
 mod tetromino;
-mod vertical_action;
 mod button_state;
 mod gravity;
 mod rotation;
 mod wall_kicks;
-
-use vertical_action::VerticalAction;
 
 use ggez::{
     event, graphics,
@@ -59,9 +56,9 @@ impl event::EventHandler<ggez::GameError> for GameState {
             KeyCode::Escape => ctx.request_quit(),
             KeyCode::Up => self.rotate_clockwise_button_state.key_down(),
             KeyCode::Numpad0 => self.rotate_counterclockwise_button_state.key_down(),
-            KeyCode::Down => self.current_vertical_action = VerticalAction::SoftDrop,
-            KeyCode::Space => self.current_vertical_action = VerticalAction::HardDrop,
-            KeyCode::C => self.current_vertical_action = VerticalAction::Hold,
+            KeyCode::Down => self.soft_drop_button_state.key_down(),
+            KeyCode::Space => self.hard_drop_button_state.key_down(),
+            KeyCode::C => self.hold_button_state.key_down(),
             KeyCode::Left => self.left_button_state.key_down(),
             KeyCode::Right => self.right_button_state.key_down(),
             _ => {}
@@ -73,9 +70,9 @@ impl event::EventHandler<ggez::GameError> for GameState {
     fn key_up_event(&mut self, _ctx: &mut Context, input: KeyInput) -> std::prelude::v1::Result<(), ggez::GameError> {
         let keycode = input.keycode.unwrap();
         match keycode {
-            KeyCode::Down => self.current_vertical_action = VerticalAction::None,
-            KeyCode::Space => self.current_vertical_action = VerticalAction::None,
-            KeyCode::C => self.current_vertical_action = VerticalAction::None,
+            KeyCode::Down => self.soft_drop_button_state.key_up(),
+            KeyCode::Space => self.hard_drop_button_state.key_up(),
+            KeyCode::C => self.hold_button_state.key_up(),
             KeyCode::Left => self.left_button_state.key_up(),
             KeyCode::Right => self.right_button_state.key_up(),
             KeyCode::Up => self.rotate_clockwise_button_state.key_up(),

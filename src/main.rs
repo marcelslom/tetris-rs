@@ -18,7 +18,8 @@ use ggez::{
 const BOARD_WIDTH: usize = 10;
 const BOARD_HEIGHT: usize = 20;
 const NUMBER_OF_TILES: usize = BOARD_WIDTH * BOARD_HEIGHT;
-const TILE_SIZE: u16 = 20;
+const TILE_SIZE: usize = 20;
+
 
 const SCREEN_SIZE: (f32, f32) = (
     BOARD_WIDTH as f32 * TILE_SIZE as f32,

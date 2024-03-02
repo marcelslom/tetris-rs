@@ -21,6 +21,7 @@ pub struct GameState {
     ghost: Option<Tetromino>,
     vertical_gravity: f32,
     horizontal_gravity: f32,
+    game_over: bool
 }
 
 impl GameState {
@@ -50,6 +51,7 @@ impl GameState {
             hard_drop_button_state: ButtonState::new(),
             soft_drop_button_state: ButtonState::new(),
             hold_button_state: ButtonState::new(),
+            game_over: false
         }
     }
 
@@ -89,12 +91,6 @@ impl GameState {
             }
 
         }
-    }
-
-    fn finish_round(&mut self) {
-        self.move_tetromino_to_board();
-        Self::remove_full_rows(&mut self.board);
-        self.new_tetromino();
     }
 
     pub fn hold(&self) -> bool {
@@ -174,15 +170,28 @@ impl GameState {
     }
 
     pub fn update_game(&mut self) {
+        if self.game_over {
+            return;
+        }
         self.handle_rotation();
         self.handle_vertical();
         self.handle_horizontal();
-        let vertical_collision = self.move_tetromino();
-        let mut ghost = self.tetromino.to_ghost();
-        if vertical_collision {
-            self.finish_round();
+        let round_finish = self.move_tetromino();
+        if round_finish {
+            self.move_tetromino_to_board();
+            Self::remove_full_rows(&mut self.board);
+        }
+
+        if self.board[0..crate::BOARD_WIDTH].iter().any(|x| x.color != Color::BLACK) {
+            self.game_over = true;
             return;
         }
+        
+        if round_finish {
+            self.new_tetromino();
+        }
+
+        let mut ghost = self.tetromino.to_ghost();
         while ! Self::can_move(&ghost, &self.board, Point {x: 0, y: 0}) {
             ghost.position.y -= 1;
         }
@@ -194,14 +203,21 @@ impl GameState {
     }
 
     pub fn draw_game(&self, canvas: &mut graphics::Canvas) {
+        if self.game_over {
+            Self::draw_text("GAME", 0.45f32, canvas);
+            Self::draw_text("OVER", 0.55f32, canvas);
+            return;
+        }
+
         for seg in self.board {
             canvas.draw(
                 &graphics::Quad,
                 graphics::DrawParam::new()
                     .dest_rect(seg.into())
-                    .color(seg.color),
+                    .color(seg.color)
             );
         }
+
         if self.ghost.is_some() {
             let tiles = self.ghost.as_ref().unwrap().tiles();
             for tile in tiles{
@@ -213,6 +229,7 @@ impl GameState {
                 );
             }
         }
+
         let tetromino_tiles = self.tetromino.tiles();
         for tile in tetromino_tiles{
             canvas.draw(
@@ -222,6 +239,16 @@ impl GameState {
                     .color(tile.color),
             );
         }
+    }
+
+    fn draw_text(text: &str, height_percentage: f32, canvas: &mut graphics::Canvas) {
+        let mut text = graphics::Text::new(text);
+        text.set_layout(graphics::TextLayout::center());
+        text.set_scale(32f32);
+        let width = (crate::BOARD_WIDTH * crate::TILE_SIZE) as f32 / 2f32;
+        let height = (crate::BOARD_HEIGHT * crate::TILE_SIZE) as f32 * height_percentage;
+        let game_draw_param = graphics::DrawParam::from([width, height]).color(Color::WHITE);
+        canvas.draw(&text, game_draw_param);
     }
 
     fn move_tetromino(&mut self) -> bool {
